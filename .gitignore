@@ -9,6 +9,7 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+cache/
 
 # Archivos de distribución / empaquetado
 build/
@@ -41,3 +42,5 @@ secrets.json
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
+
+ruta.html
