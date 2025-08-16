@@ -8,8 +8,16 @@ import plotly.express as px
 import webbrowser
 import os
 import pandas as pd
-
 from geopy.geocoders import Nominatim
+from utils import get_turn_penalty, get_traffic_factor, get_weather_factor, get_time_factor
+
+
+from Node import Node
+from geopy.distance import geodesic
+from constants import HEURISTIC_OPTIMISTIC_SPEED_KMH
+from utils import get_turn_penalty, get_traffic_factor, get_weather_factor, get_time_factor
+
+
 class Waze(Node):
     def __init__(self, G, start, goal):
         super().__init__(state=start, value=0, operators=[])
@@ -23,19 +31,49 @@ class Waze(Node):
             return neighbors[index]
         return None
 
-    def cost(self, from_node, to_node):
-        # Costo = distancia geodésica entre dos nodos
+    def cost(self, from_node, to_node, prev_node=None):
+        """
+        Calcula el costo en segundos para ir de from_node a to_node,
+        considerando velocidad de vía, giros y factores externos.
+        """
         coord1 = (self.G.nodes[from_node]['y'], self.G.nodes[from_node]['x'])
         coord2 = (self.G.nodes[to_node]['y'], self.G.nodes[to_node]['x'])
-        return geodesic(coord1, coord2).meters
+
+        # Distancia del grafo (metros)
+        dist_m = self.G.edges[(from_node, to_node, 0)]['length']
+
+        # Velocidad en km/h (si no está, asumimos 30)
+        speed_kmh = self.G.edges[(from_node, to_node, 0)].get('speed_kph', 30)
+
+        # Tiempo base en segundos
+        base_time_sec = (dist_m / 1000) / speed_kmh * 3600
+
+        # Penalización por giro
+        turn_penalty = get_turn_penalty(self.G, from_node, to_node, prev_node)
+
+        # Factores externos
+        traffic_factor = get_traffic_factor(*coord1)
+        weather_factor = get_weather_factor(*coord1)
+        time_factor = get_time_factor()
+
+        # Tiempo total ajustado
+        total_time = (base_time_sec + turn_penalty) * traffic_factor * weather_factor * time_factor
+
+        return total_time
 
     def heuristic(self, node):
-        # Distancia estimada al objetivo
+        """
+        Estimación optimista del tiempo hasta el objetivo.
+        """
         coord1 = (self.G.nodes[node]['y'], self.G.nodes[node]['x'])
         coord2 = (self.G.nodes[self.goal]['y'], self.G.nodes[self.goal]['x'])
-        return geodesic(coord1, coord2).meters
+        dist_m = geodesic(coord1, coord2).meters
+        return (dist_m / 1000) / HEURISTIC_OPTIMISTIC_SPEED_KMH * 3600
 
     def astar(self):
+        """
+        Algoritmo A* para encontrar la ruta más rápida según nuestro modelo de costos.
+        """
         open_set = {self.start}
         came_from = {}
         g_score = {node: float("inf") for node in self.G.nodes}
@@ -50,14 +88,15 @@ class Waze(Node):
 
             open_set.remove(current)
             for neighbor in self.G.neighbors(current):
-                tentative_g_score = g_score[current] + self.cost(current, neighbor)
+                prev_node = came_from.get(current, None)  # para penalizar giro
+                tentative_g_score = g_score[current] + self.cost(current, neighbor, prev_node)
                 if tentative_g_score < g_score[neighbor]:
                     came_from[neighbor] = current
                     g_score[neighbor] = tentative_g_score
                     f_score[neighbor] = tentative_g_score + self.heuristic(neighbor)
                     open_set.add(neighbor)
 
-        return None  # No se encontró ruta
+        return None
 
     def reconstruct_path(self, came_from, current):
         path = [current]
@@ -66,6 +105,7 @@ class Waze(Node):
             path.append(current)
         path.reverse()
         return path
+
 def generate_df(route):
     node_start = []
     node_end = []
@@ -141,9 +181,9 @@ if __name__ == "__main__":
     print(f"Inicio: {start}, Fin: {end}")
     # Descargar el grafo de calles
     G = ox.graph_from_place('Envigado, Antioquia, Colombia', network_type='drive')
-    hwy_speeds = {'residential': 35,
-                'secondary': 50,
-                'tertiary': 60}
+    hwy_speeds = {'residential': 30,
+                'secondary': 90,
+                'tertiary': 120}
     G = ox.add_edge_speeds(G, hwy_speeds=hwy_speeds)
     G = ox.add_edge_travel_times(G)
     # Convertir nodos a coordenadas
