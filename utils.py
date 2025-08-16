@@ -18,7 +18,6 @@ def get_turn_penalty(G, from_node, to_node, prev_node):
     # Vector desde from_node a to_node
     x2, y2 = G.nodes[to_node]['x'] - G.nodes[from_node]['x'], G.nodes[to_node]['y'] - G.nodes[from_node]['y']
 
-    # Producto punto y magnitudes
     dot = x1 * x2 + y1 * y2
     mag1 = math.hypot(x1, y1)
     mag2 = math.hypot(x2, y2)
@@ -26,16 +25,22 @@ def get_turn_penalty(G, from_node, to_node, prev_node):
     if mag1 == 0 or mag2 == 0:
         return 0
 
-    # Normalizar para evitar valores fuera de rango
     cos_angle = dot / (mag1 * mag2)
-    cos_angle = max(-1.0, min(1.0, cos_angle))  # 🔹 Esto evita el "math domain error"
-
+    cos_angle = max(-1.0, min(1.0, cos_angle))
     angle = math.degrees(math.acos(cos_angle))
 
-    # Penalidad simple: más ángulo, más costo
-    if angle > 30:  
-        return 10  
-    return 0
+    # Clasificar el giro
+    if angle < 30:
+        return PENALTY_STRAIGHT_SEC
+    elif 30 <= angle < 100:
+        return PENALTY_RIGHT_TURN_SEC
+    elif 100 <= angle < 170:
+        return PENALTY_LEFT_TURN_SEC
+    elif angle >= 170:
+        return PENALTY_UTURN_SEC
+    else:
+        return PENALTY_DEFAULT_SEC
+
 def get_traffic_factor(lat, lon):
     """
     Obtiene un factor de tráfico en función de la velocidad actual vs libre flujo.
