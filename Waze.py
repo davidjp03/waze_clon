@@ -1,4 +1,5 @@
 from Node import Node
+import heapq
 import osmnx as ox
 import networkx as nx
 import geopy
@@ -25,40 +26,33 @@ class Waze(Node):
         self.start = start
         self.goal = goal
 
-    def getState(self, index):
-        neighbors = list(self.G.neighbors(self.state))
-        if 0 <= index < len(neighbors):
-            return neighbors[index]
-        return None
+        # 🔹 Cachear factores externos SOLO UNA VEZ
+        start_coord = (self.G.nodes[start]['y'], self.G.nodes[start]['x'])
+        self.traffic_factor = get_traffic_factor(*start_coord)
+        self.weather_factor = get_weather_factor(*start_coord)
+        self.time_factor = get_time_factor()
+
+        # 🔹 Precalcular tiempos base de cada arista
+        for u, v, data in self.G.edges(data=True):
+            dist_m = data.get("length", 1)
+            speed_kmh = data.get("speed_kph", 30)
+            base_time_sec = (dist_m / 1000) / speed_kmh * 3600
+            data["base_time_sec"] = base_time_sec
 
     def cost(self, from_node, to_node, prev_node=None):
         """
         Calcula el costo en segundos para ir de from_node a to_node,
         considerando velocidad de vía, giros y factores externos.
         """
-        coord1 = (self.G.nodes[from_node]['y'], self.G.nodes[from_node]['x'])
-        coord2 = (self.G.nodes[to_node]['y'], self.G.nodes[to_node]['x'])
-
-        # Distancia del grafo (metros)
-        dist_m = self.G.edges[(from_node, to_node, 0)]['length']
-
-        # Velocidad en km/h (si no está, asumimos 30)
-        speed_kmh = self.G.edges[(from_node, to_node, 0)].get('speed_kph', 30)
-
-        # Tiempo base en segundos
-        base_time_sec = (dist_m / 1000) / speed_kmh * 3600
+        edge_data = self.G.edges[(from_node, to_node, 0)]
+        base_time_sec = edge_data["base_time_sec"]
 
         # Penalización por giro
         turn_penalty = get_turn_penalty(self.G, from_node, to_node, prev_node)
 
-        # Factores externos
-        traffic_factor = get_traffic_factor(*coord1)
-        weather_factor = get_weather_factor(*coord1)
-        time_factor = get_time_factor()
-
-        # Tiempo total ajustado
-        total_time = (base_time_sec + turn_penalty) * traffic_factor * weather_factor * time_factor
-
+        # 🔹 Usar los factores precalculados
+        total_time = (base_time_sec + turn_penalty) * \
+                     self.traffic_factor * self.weather_factor * self.time_factor
         return total_time
 
     def heuristic(self, node):
@@ -72,29 +66,30 @@ class Waze(Node):
 
     def astar(self):
         """
-        Algoritmo A* para encontrar la ruta más rápida según nuestro modelo de costos.
+        Algoritmo A* optimizado con heapq.
         """
-        open_set = {self.start}
+        open_heap = []  # priority queue (f_score, node)
+        heapq.heappush(open_heap, (self.heuristic(self.start), self.start))
+
         came_from = {}
         g_score = {node: float("inf") for node in self.G.nodes}
         g_score[self.start] = 0
-        f_score = {node: float("inf") for node in self.G.nodes}
-        f_score[self.start] = self.heuristic(self.start)
 
-        while open_set:
-            current = min(open_set, key=lambda node: f_score[node])
+        while open_heap:
+            _, current = heapq.heappop(open_heap)
+
             if current == self.goal:
                 return self.reconstruct_path(came_from, current)
 
-            open_set.remove(current)
             for neighbor in self.G.neighbors(current):
-                prev_node = came_from.get(current, None)  # para penalizar giro
-                tentative_g_score = g_score[current] + self.cost(current, neighbor, prev_node)
-                if tentative_g_score < g_score[neighbor]:
+                prev_node = came_from.get(current, None)
+                tentative_g = g_score[current] + self.cost(current, neighbor, prev_node)
+
+                if tentative_g < g_score[neighbor]:
                     came_from[neighbor] = current
-                    g_score[neighbor] = tentative_g_score
-                    f_score[neighbor] = tentative_g_score + self.heuristic(neighbor)
-                    open_set.add(neighbor)
+                    g_score[neighbor] = tentative_g
+                    f_score = tentative_g + self.heuristic(neighbor)
+                    heapq.heappush(open_heap, (f_score, neighbor))
 
         return None
 
