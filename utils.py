@@ -74,3 +74,14 @@ def get_time_factor():
     if 6 <= hour <= 9 or 17 <= hour <= 20:
         return TIME_FACTOR_MAX  # hora pico
     return TIME_FACTOR_MIN
+
+
+def get_osrm_duration(start, end, profile="driving"):
+    """
+    Devuelve la duración estimada en segundos entre dos puntos usando OSRM.
+    start y end deben ser (lat, lon).
+    """
+    osrm_data = APIManager.get_osrm_route(start, end, profile)
+    if osrm_data and "routes" in osrm_data and len(osrm_data["routes"]) > 0:
+        return osrm_data["routes"][0]["duration"]  # en segundos
+    return None

@@ -9,14 +9,9 @@ import plotly.express as px
 import webbrowser
 import os
 import pandas as pd
-from geopy.geocoders import Nominatim
-from utils import get_turn_penalty, get_traffic_factor, get_weather_factor, get_time_factor
 
-
-from Node import Node
-from geopy.distance import geodesic
 from constants import HEURISTIC_OPTIMISTIC_SPEED_KMH
-from utils import get_turn_penalty, get_traffic_factor, get_weather_factor, get_time_factor
+from utils import get_turn_penalty, get_traffic_factor, get_weather_factor, get_time_factor, get_osrm_duration
 
 
 class Waze(Node):
@@ -169,8 +164,8 @@ def show_route_map(df, start, end):
 if __name__ == "__main__":
     locator = Nominatim(user_agent='myGeocoder')
     # Punto inicial y final (puedes cambiarlos aquí)
-    location_start = locator.geocode('Sede Posgrados EIA, Envigado, Colombia')
-    location_end=locator.geocode('Universidad EIA, Envigado, Colombia')
+    location_start = locator.geocode('Universidad EIA, Envigado, Colombia')
+    location_end=locator.geocode('Parque El Salado, Envigado, Colombia')
     start = (location_start.latitude, location_start.longitude)
     end = (location_end.latitude, location_end.longitude)      
     print(f"Inicio: {start}, Fin: {end}")
